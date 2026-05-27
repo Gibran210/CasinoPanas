@@ -65,51 +65,48 @@ export default function Dashboard() {
       <nav style={{ position: "sticky", top: 0, zIndex: 50,
         background: "rgba(13,13,13,0.95)", backdropFilter: "blur(16px)",
         borderBottom: "1px solid var(--border-subtle)",
-        padding: "0 20px", height: 60,
-        display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        padding: "6px clamp(12px,3vw,20px)",
+        display: "flex", flexDirection: "column", gap: 4 }}>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 22 }}>🃏</span>
-          <span className="gold-text" style={{ fontFamily: "Georgia, serif",
-            fontSize: 20, fontWeight: 900, letterSpacing: "0.08em" }}>
-            PANAS CASINO
-          </span>
+        {/* Fila 1: Logo + Balance + Salir */}
+        <div style={{ display: "flex", alignItems: "center",
+          justifyContent: "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>🃏</span>
+            <span className="gold-text" style={{ fontFamily: "Georgia, serif",
+              fontSize: "clamp(14px,3vw,18px)", fontWeight: 900,
+              letterSpacing: "0.06em", whiteSpace: "nowrap",
+              overflow: "hidden", textOverflow: "ellipsis" }}>
+              ROYAL CASINO
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6,
+              padding: "5px 10px", borderRadius: "var(--radius-sm)",
+              background: "var(--gold-dim)", border: "1px solid var(--gold-border)" }}>
+              <span style={{ fontSize: 13 }}>💰</span>
+              <span style={{ color: "var(--gold)", fontWeight: 700,
+                fontSize: "clamp(12px,2vw,15px)" }}>
+                ${(userData?.balance || 0).toLocaleString()}
+              </span>
+            </div>
+            <button onClick={logout}
+              style={{ padding: "5px 10px", borderRadius: "var(--radius-sm)",
+                background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)",
+                color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+              onMouseEnter={e => { e.target.style.background = "rgba(239,68,68,0.2)"; }}
+              onMouseLeave={e => { e.target.style.background = "rgba(239,68,68,0.1)"; }}>
+              Salir
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* Balance */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8,
-            padding: "6px 14px", borderRadius: "var(--radius-sm)",
-            background: "var(--gold-dim)", border: "1px solid var(--gold-border)" }}>
-            <span style={{ fontSize: 14 }}>💰</span>
-            <span style={{ color: "var(--gold)", fontWeight: 700, fontSize: 15 }}>
-              ${(userData?.balance || 0).toLocaleString()}
-            </span>
-          </div>
-
-          {/* Avatar + nombre */}
-          <div className="hidden sm:flex" style={{ alignItems: "center", gap: 8,
-            padding: "6px 12px", borderRadius: "var(--radius-sm)",
-            background: "var(--surface-3)", border: "1px solid var(--border-dim)" }}>
-            <div style={{ width: 28, height: 28, borderRadius: "50%",
-              background: "var(--gold-dim)", border: "1px solid var(--gold-border)",
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
-              🎮
-            </div>
-            <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>
-              {userData?.username}
-            </span>
-          </div>
-
-          <button onClick={logout}
-            style={{ padding: "7px 14px", borderRadius: "var(--radius-sm)",
-              background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)",
-              color: "#f87171", fontSize: 13, fontWeight: 600, cursor: "pointer",
-              transition: "all 0.2s" }}
-            onMouseEnter={e => { e.target.style.background = "rgba(239,68,68,0.2)"; }}
-            onMouseLeave={e => { e.target.style.background = "rgba(239,68,68,0.1)"; }}>
-            Salir
-          </button>
+        {/* Fila 2: Usuario */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12 }}>🎮</span>
+          <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+            {userData?.username}
+          </span>
         </div>
       </nav>
 

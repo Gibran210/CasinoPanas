@@ -986,7 +986,7 @@ export const CasinoProvider = ({ children }) => {
   // HELPERS
   // =====================================================
 
-  const _viudaNextTurn = async (seats, centerCards, seatKey, extraUpdates = {}) => {
+  const _viudaNextTurn = async (seats, centerCards, seatKey, extraUpdates = {}, freshActed = null) => {
     const tableRef  = doc(db, "tables", activeTable.id);
     const phase     = activeTable.phase;
 
@@ -1014,7 +1014,9 @@ export const CasinoProvider = ({ children }) => {
       return;
     }
 
-    const acted    = [...(activeTable.actedThisRound || []), seatKey];
+    // Usar freshActed si se pasó (evita race condition con escrituras del bot)
+    const baseActed = freshActed !== null ? freshActed : (activeTable.actedThisRound || []);
+    const acted     = baseActed.includes(seatKey) ? baseActed : [...baseActed, seatKey];
     const allActed = order.every(k => acted.includes(k));
 
     // ── Ronda 0 — fase "choose_all": oferta de cartas boca abajo ──
@@ -1137,7 +1139,6 @@ export const CasinoProvider = ({ children }) => {
   const viudaSwapCard = async (myCardIdx, centerCardIdx) => {
     try {
       if (!activeTable || !user) return;
-      // Solo disponible cuando ya hay cartas reveladas (individual)
       if (activeTable.round1Phase === "choose_all") return;
 
       const entry = Object.entries(activeTable.seats || {})
@@ -1145,6 +1146,11 @@ export const CasinoProvider = ({ children }) => {
       if (!entry) return;
       const [seatKey, player] = entry;
       if (activeTable.currentTurn !== seatKey) return;
+
+      // Leer actedThisRound fresco de Firestore para evitar race condition con el bot
+      const freshSnap = await getDoc(doc(db, "tables", activeTable.id));
+      if (!freshSnap.exists()) return;
+      const freshActed = freshSnap.data().actedThisRound || [];
 
       const seats       = { ...activeTable.seats };
       const centerCards = activeTable.centerCards.map(c => ({ ...c }));
@@ -1154,7 +1160,7 @@ export const CasinoProvider = ({ children }) => {
       centerCards[centerCardIdx] = { card: myCard, revealed: true };
       seats[seatKey] = { ...player, cards: newCards };
 
-      await _viudaNextTurn(seats, centerCards, seatKey);
+      await _viudaNextTurn(seats, centerCards, seatKey, {}, freshActed);
     } catch (err) {
       console.error("viudaSwapCard:", err);
     }
@@ -1205,7 +1211,10 @@ export const CasinoProvider = ({ children }) => {
       const [seatKey] = entry;
       if (activeTable.currentTurn !== seatKey) return;
 
-      await _viudaNextTurn(activeTable.seats, activeTable.centerCards, seatKey);
+      const freshSnap  = await getDoc(doc(db, "tables", activeTable.id));
+      const freshActed = freshSnap.exists() ? (freshSnap.data().actedThisRound || []) : [];
+
+      await _viudaNextTurn(activeTable.seats, activeTable.centerCards, seatKey, {}, freshActed);
     } catch (err) {
       console.error("viudaSkipAll:", err);
     }
@@ -1218,7 +1227,6 @@ export const CasinoProvider = ({ children }) => {
   const viudaPass = async () => {
     try {
       if (!activeTable || !user) return;
-      // Pasar solo está disponible en la última ronda (tras un toque)
       if (activeTable.phase !== "final_round") return;
       const entry = Object.entries(activeTable.seats || {})
         .find(([_, p]) => p?.uid === user.uid);
@@ -1226,7 +1234,10 @@ export const CasinoProvider = ({ children }) => {
       const [seatKey] = entry;
       if (activeTable.currentTurn !== seatKey) return;
 
-      await _viudaNextTurn(activeTable.seats, activeTable.centerCards, seatKey);
+      const freshSnap  = await getDoc(doc(db, "tables", activeTable.id));
+      const freshActed = freshSnap.exists() ? (freshSnap.data().actedThisRound || []) : [];
+
+      await _viudaNextTurn(activeTable.seats, activeTable.centerCards, seatKey, {}, freshActed);
     } catch (err) {
       console.error("viudaPass:", err);
     }

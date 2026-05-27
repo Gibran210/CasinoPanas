@@ -419,67 +419,59 @@ export default function ViudaTable() {
           position:"sticky", top:0, zIndex:50,
           background:"rgba(8,6,16,0.97)", backdropFilter:"blur(20px)",
           borderBottom:"1px solid rgba(139,92,246,0.12)",
-          padding:"0 clamp(12px,3vw,28px)", height:56, flexShrink:0,
-          display:"flex", alignItems:"center", justifyContent:"space-between", gap:10,
+          padding:"6px clamp(10px,3vw,20px)", flexShrink:0,
+          display:"flex", flexDirection:"column", gap:4,
         }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <button onClick={leaveTable} style={{ padding:"6px 12px", borderRadius:10,
-              background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.18)",
-              color:"#f87171", fontSize:13, fontWeight:600, cursor:"pointer" }}>
-              ← Salir
-            </button>
-            <div style={{ width:1, height:22, background:"rgba(255,255,255,0.08)" }} />
-            <span style={{ fontFamily:"Georgia,serif",
-              fontSize:"clamp(16px,2.5vw,22px)", fontWeight:900,
-              color:"#a78bfa", letterSpacing:"0.1em" }}>
-              LA VIUDA
-            </span>
-          </div>
-
-          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-            <span style={{ fontFamily:"monospace", fontSize:13, color:"#a78bfa",
-              letterSpacing:"0.2em", padding:"4px 10px", borderRadius:99,
-              background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
-              {activeTable?.code}
-            </span>
-            <span style={{ fontSize:12, fontWeight:600, padding:"4px 10px", borderRadius:99,
-              background:inGame?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.05)",
-              border:`1px solid ${inGame?"rgba(139,92,246,0.3)":"rgba(139,92,246,0.15)"}`,
-              color:"#c4b5fd", whiteSpace:"nowrap" }}>
-              {phaseLabels[phase] || phase}
-            </span>
-            {phase==="final_round" && (
-              <span style={{ fontSize:12, fontWeight:700, padding:"4px 10px", borderRadius:99,
-                background:"rgba(239,68,68,0.12)", border:"1px solid rgba(239,68,68,0.3)",
-                color:"#f87171", whiteSpace:"nowrap" }}>
-                ¡Última ronda!
+          {/* Fila 1: Salir + Título + Balance */}
+          <div style={{ display:"flex", alignItems:"center",
+            justifyContent:"space-between", gap:8 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
+              <button onClick={leaveTable} style={{ padding:"5px 10px", borderRadius:8,
+                background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.18)",
+                color:"#f87171", fontSize:12, fontWeight:600,
+                cursor:"pointer", flexShrink:0 }}>
+                ← Salir
+              </button>
+              <span style={{ fontFamily:"Georgia,serif",
+                fontSize:"clamp(14px,2.5vw,20px)", fontWeight:900,
+                color:"#a78bfa", letterSpacing:"0.08em",
+                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                LA VIUDA
               </span>
-            )}
-            {/* Comodín de la ronda — visible durante toda la partida */}
-            {wildRank && (
-              <div style={{ display:"flex", alignItems:"center", gap:5,
-                padding:"4px 12px", borderRadius:99,
-                background:"rgba(251,191,36,0.12)",
-                border:"1px solid rgba(251,191,36,0.4)",
-                boxShadow:"0 0 10px rgba(251,191,36,0.1)" }}>
-                <span style={{ fontSize:13 }}>★</span>
-                <div>
-                  <span style={{ color:"rgba(251,191,36,0.6)", fontSize:9,
-                    fontWeight:600, letterSpacing:"0.1em",
-                    textTransform:"uppercase", display:"block", lineHeight:1 }}>
-                    Comodín
-                  </span>
-                  <span style={{ color:"#fbbf24", fontSize:14, fontWeight:900, lineHeight:1 }}>
-                    {wildRank}
-                  </span>
-                </div>
-              </div>
-            )}
-            <span style={{ fontSize:14, fontWeight:700, padding:"4px 10px", borderRadius:99,
+            </div>
+            <span style={{ fontSize:"clamp(12px,2vw,14px)", fontWeight:700,
+              padding:"4px 10px", borderRadius:99, flexShrink:0,
               background:"rgba(212,175,55,0.08)", border:"1px solid rgba(212,175,55,0.18)",
               color:"#d4af37", whiteSpace:"nowrap" }}>
               💰 ${(userData?.balance||0).toLocaleString()}
             </span>
+          </div>
+
+          {/* Fila 2: Código + Fase + Comodín (solo cuando hay datos) */}
+          <div style={{ display:"flex", alignItems:"center",
+            gap:6, flexWrap:"nowrap", overflowX:"auto",
+            msOverflowStyle:"none", scrollbarWidth:"none" }}>
+            <span style={{ fontFamily:"monospace", fontSize:11, color:"#a78bfa",
+              letterSpacing:"0.15em", padding:"3px 8px", borderRadius:99, flexShrink:0,
+              background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
+              {activeTable?.code}
+            </span>
+            <span style={{ fontSize:11, fontWeight:600, padding:"3px 8px",
+              borderRadius:99, flexShrink:0,
+              background:inGame?"rgba(139,92,246,0.12)":"rgba(139,92,246,0.05)",
+              border:`1px solid ${inGame?"rgba(139,92,246,0.3)":"rgba(139,92,246,0.15)"}`,
+              color:"#c4b5fd", whiteSpace:"nowrap" }}>
+              {phase==="final_round"?"🖐 Última ronda":(phaseLabels[phase]||phase)}
+            </span>
+            {wildRank && (
+              <span style={{ fontSize:11, fontWeight:700, padding:"3px 8px",
+                borderRadius:99, flexShrink:0, whiteSpace:"nowrap",
+                background:"rgba(251,191,36,0.12)",
+                border:"1px solid rgba(251,191,36,0.35)",
+                color:"#fbbf24" }}>
+                ★ Comodín: {wildRank}
+              </span>
+            )}
           </div>
         </nav>
 

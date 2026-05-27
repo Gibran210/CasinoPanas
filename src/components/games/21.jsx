@@ -701,38 +701,45 @@ export default function Table21() {
           position: "sticky", top: 0, zIndex: 50,
           background: "rgba(6,14,7,0.97)", backdropFilter: "blur(20px)",
           borderBottom: "1px solid rgba(212,175,55,0.1)",
-          padding: "0 clamp(12px,3vw,28px)", height: 56, flexShrink: 0,
-          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+          padding: "6px clamp(10px,3vw,20px)", flexShrink: 0,
+          display: "flex", flexDirection: "column", gap: 4,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button onClick={leaveTable}
-              style={{ padding: "6px 12px", borderRadius: 10,
-                background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)",
-                color: "#f87171", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-              ← Salir
-            </button>
-            <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.08)" }} />
-            <span style={{ fontFamily: "Georgia,serif",
-              fontSize: "clamp(18px,3vw,24px)", fontWeight: 900,
-              color: "#d4af37", letterSpacing: "0.12em" }}>21</span>
+          {/* Fila 1: Salir + Título + Balance */}
+          <div style={{ display: "flex", alignItems: "center",
+            justifyContent: "space-between", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <button onClick={leaveTable}
+                style={{ padding: "5px 10px", borderRadius: 8, flexShrink: 0,
+                  background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)",
+                  color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                ← Salir
+              </button>
+              <span style={{ fontFamily: "Georgia,serif",
+                fontSize: "clamp(16px,3vw,22px)", fontWeight: 900,
+                color: "#d4af37", letterSpacing: "0.12em" }}>21</span>
+            </div>
+            <span style={{ fontSize: "clamp(12px,2vw,14px)", fontWeight: 700,
+              padding: "4px 10px", borderRadius: 99, flexShrink: 0,
+              background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.18)",
+              color: "#d4af37", whiteSpace: "nowrap" }}>
+              💰 ${(userData?.balance || 0).toLocaleString()}
+            </span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: "monospace", fontSize: 13, color: "#d4af37",
-              letterSpacing: "0.2em", padding: "4px 10px", borderRadius: 99,
+          {/* Fila 2: Código + Fase */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6,
+            overflowX: "auto", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            <span style={{ fontFamily: "monospace", fontSize: 11, color: "#d4af37",
+              letterSpacing: "0.15em", padding: "3px 8px", borderRadius: 99, flexShrink: 0,
               background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
               {activeTable?.code}
             </span>
-            <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 99,
+            <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px",
+              borderRadius: 99, flexShrink: 0,
               background: inGame ? "rgba(34,197,94,0.1)" : "rgba(212,175,55,0.08)",
               border: `1px solid ${inGame ? "rgba(34,197,94,0.25)" : "rgba(212,175,55,0.18)"}`,
               color: inGame ? "#4ade80" : "#d4af37", whiteSpace: "nowrap" }}>
               {phaseLabel}
-            </span>
-            <span style={{ fontSize: 14, fontWeight: 700, padding: "4px 10px", borderRadius: 99,
-              background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.18)",
-              color: "#d4af37", whiteSpace: "nowrap" }}>
-              💰 ${(userData?.balance || 0).toLocaleString()}
             </span>
           </div>
         </nav>
