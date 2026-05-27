@@ -961,10 +961,11 @@ export const CasinoProvider = ({ children }) => {
       const firstSeat = sorted.find(k => seats[k] !== null) || null;
       pendingBetRef.current = null;
 
-      // handNumber: cuántas manos se han jugado en esta mesa (empieza en 1)
-      // Determina el comodín de la mano: mano 1 = A, 2 = 2, ... 13 = K, 14 = A...
-      const handNumber    = (freshData.handNumber || 0) + 1;
-      const wildcardRank  = getRoundWildcardRank(handNumber);
+      // handNumber: contador de manos jugadas en esta mesa
+      const handNumber = (freshData.handNumber || 0) + 1;
+      // Comodín de la partida: aleatorio entre A,2..K (excluyendo jokers)
+      const RANKS_POOL  = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+      const wildcardRank = RANKS_POOL[Math.floor(Math.random() * RANKS_POOL.length)];
 
       await updateDoc(tableRef, {
         phase:              "playing",
