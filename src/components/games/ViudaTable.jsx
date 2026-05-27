@@ -342,8 +342,10 @@ export default function ViudaTable() {
   const isMyTurn      = activeTable?.currentTurn === mySeatKey;
   const round1Phase   = activeTable?.round1Phase;  // "choose_all" | "individual" | null
   const isChooseAll   = round1Phase === "choose_all"; // Ronda 1: elegir cambiar todo o no
-  // Tocar: solo cuando todos hayan jugado al menos 1 vez (round >= 2)
-  const canTouch      = round >= 3 && isMyTurn && phase === "playing";
+  // Tocar: disponible cuando firstOfferedSeat ya actuó en ronda 1
+  // (es decir, la primera vuelta completa ha terminado)
+  const firstOfferedActed = activeTable?.firstOfferedActed || false;
+  const canTouch = firstOfferedActed && isMyTurn && phase === "playing";
   const canPass       = phase === "final_round" && isMyTurn; // SOLO tras un toque
   const inGame        = ["playing","final_round","results"].includes(phase);
 
@@ -684,8 +686,8 @@ export default function ViudaTable() {
                         ? "Ahora selecciona una carta del centro"
                         : isChooseAll
                           ? "Ronda 1 — ¿Cambias toda tu mano por las del centro?"
-                          : round < 2
-                            ? "Ronda 1 — Alguien cambió. Ahora puedes intercambiar cartas."
+                          : !firstOfferedActed
+                            ? "Ronda 1 — Todos deben actuar antes de poder tocar"
                             : "Es tu turno — elige una acción"}
                   </p>
                 )}
@@ -801,10 +803,10 @@ export default function ViudaTable() {
                         background:"rgba(139,92,246,0.08)",
                         border:"1px solid rgba(139,92,246,0.2)" }}>
                         <p style={{ margin:"0 0 4px", color:"#c4b5fd", fontWeight:700, fontSize:14 }}>
-                          Ronda 1 — Cartas del centro boca abajo
+                          Ronda 0 — Cartas del centro boca abajo
                         </p>
                         <p style={{ margin:0, color:"rgba(255,255,255,0.3)", fontSize:12 }}>
-                          ¿Cambias toda tu mano por las del centro?
+                          ¿Cambias toda tu mano por las 5 del centro?
                         </p>
                       </div>
                       <div style={{ display:"flex", gap:12 }}>

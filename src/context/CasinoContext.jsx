@@ -914,13 +914,13 @@ export const CasinoProvider = ({ children }) => {
       // Mazo con jokers
       const deck  = createViudaDeck();
       let seats   = { ...freshData.seats };
-      const sorted = Object.keys(seats).sort((a, b) => +a - +b);
+      const allKeys = Object.keys(seats).sort((a, b) => +a - +b);
 
       // ── Si solo hay 1 jugador, agregar bot ──
-      const humanSeats = sorted.filter(k => seats[k] !== null);
+      const humanSeats = allKeys.filter(k => seats[k] !== null);
       if (humanSeats.length === 1) {
         // Buscar primer slot vacío
-        const emptySlot = sorted.find(k => seats[k] === null);
+        const emptySlot = allKeys.find(k => seats[k] === null);
         if (emptySlot) {
           seats[emptySlot] = {
             uid:         'bot_' + emptySlot,
@@ -937,7 +937,7 @@ export const CasinoProvider = ({ children }) => {
         }
       }
 
-      sorted.forEach(key => {
+      allKeys.forEach(key => {
         if (!seats[key]) return;
         const bet = (pendingBetRef.current !== null && seats[key].uid === user?.uid)
           ? pendingBetRef.current
@@ -993,9 +993,15 @@ export const CasinoProvider = ({ children }) => {
   // =====================================================
 
   const _viudaNextTurn = async (seats, centerCards, seatKey, extraUpdates = {}) => {
-    const tableRef = doc(db, "tables", activeTable.id);
-    const phase    = activeTable.phase;
-    const sorted   = Object.keys(seats).filter(k => seats[k]).sort((a, b) => +a - +b);
+    const tableRef  = doc(db, "tables", activeTable.id);
+    const phase     = activeTable.phase;
+
+    // Usar playOrder (aleatorio) si existe, si no generar orden numérico
+    const playOrder = activeTable.playOrder ||
+      Object.keys(seats).filter(k => seats[k]).sort((a, b) => +a - +b);
+
+    // Solo los jugadores activos (sentados) en el orden de juego
+    const order = playOrder.filter(k => seats[k]);
 
     // ── Fase final_round ──
     if (phase === "final_round") {
@@ -1015,79 +1021,85 @@ export const CasinoProvider = ({ children }) => {
     }
 
     const acted    = [...(activeTable.actedThisRound || []), seatKey];
-    const allActed = sorted.every(k => acted.includes(k));
+    const allActed = order.every(k => acted.includes(k));
 
-    // ── Ronda 1 fase "choose_all" ──
+    // ── Ronda 0 — fase "choose_all": oferta de cartas boca abajo ──
     if (activeTable.round === 1 && activeTable.round1Phase === "choose_all") {
-      // ¿Alguien acaba de cambiar todas las cartas AHORA?
-      // (viene en extraUpdates cuando se llama desde viudaSwapAll)
       const justSwapped = extraUpdates.round1Swapped === true;
 
-      if (allActed) {
-        // Todos han actuado en ronda 1
-        const anyoneSwapped = activeTable.round1Swapped || justSwapped;
+      // ¿Todos en la oferta han actuado (aceptado o rechazado)?
+      const offerOrder    = playOrder.filter(k => seats[k]);
+      const allOffered    = offerOrder.every(k => acted.includes(k));
+      const anyoneSwapped = activeTable.round1Swapped || justSwapped;
 
-        if (!anyoneSwapped) {
-          // Nadie cambió todo → revelar centro y dárselo automáticamente al primer jugador
-          const firstSeat     = sorted[0];
-          const firstPlayer   = seats[firstSeat];
-          const newCenter     = firstPlayer.cards.map(card => ({ card, revealed: true }));
-          const newFirstCards = centerCards.map(cc => cc.card);
-          seats[firstSeat]    = { ...firstPlayer, cards: newFirstCards };
+      if (anyoneSwapped) {
+        // Alguien aceptó → ronda 1 empieza desde round1StartSeat (playOrder[1])
+        const round1Start = activeTable.round1StartSeat || order[1] || order[0];
+        await updateDoc(tableRef, {
+          seats, centerCards,
+          round:             1,
+          round1Phase:       "individual",
+          currentTurn:       round1Start,
+          actedThisRound:    [],
+          swapperSeat:       seatKey,
+          ...extraUpdates,
+        });
+      } else if (allOffered) {
+        // Nadie aceptó → firstOfferedSeat (playOrder[0]) recibe las cartas automáticamente
+        const firstSeat   = activeTable.firstOfferedSeat || order[0];
+        const firstPlayer = seats[firstSeat];
+        const newCenter   = firstPlayer.cards.map(card => ({ card, revealed: true }));
+        seats[firstSeat]  = { ...firstPlayer, cards: centerCards.map(cc => cc.card) };
 
-          await updateDoc(tableRef, {
-            seats,
-            centerCards:    newCenter,
-            round:          2,
-            round1Phase:    "individual",
-            currentTurn:    sorted[0],
-            actedThisRound: [],
-            ...extraUpdates,
-          });
-        } else {
-          // Alguien sí cambió → ronda 2 individual normal
-          await updateDoc(tableRef, {
-            seats, centerCards,
-            round:          2,
-            round1Phase:    "individual",
-            currentTurn:    sorted[0],
-            actedThisRound: [],
-            ...extraUpdates,
-          });
-        }
+        const round1Start = activeTable.round1StartSeat || order[1] || order[0];
+        await updateDoc(tableRef, {
+          seats,
+          centerCards:    newCenter,
+          round:          1,
+          round1Phase:    "individual",
+          currentTurn:    round1Start,
+          actedThisRound: [],
+          ...extraUpdates,
+        });
       } else {
-        // Todavía quedan jugadores por actuar en ronda 1
-        const idx  = sorted.indexOf(seatKey);
-        const next = sorted[idx + 1] || sorted[0];
-
-        // Si alguien acaba de cambiar todo → los siguientes ya juegan en modo individual
-        // (pueden cambiar una carta en lugar de solo elegir cambiar todo o no)
-        const newRound1Phase = (justSwapped || activeTable.round1Swapped)
-          ? "individual"
-          : "choose_all";
-
+        // Siguiente jugador en la oferta
+        const idx  = offerOrder.indexOf(seatKey);
+        const next = offerOrder[idx + 1]; // si no hay siguiente, allOffered sería true
         await updateDoc(tableRef, {
           seats, centerCards,
           currentTurn:    next,
           actedThisRound: acted,
-          round1Phase:    newRound1Phase,
           ...extraUpdates,
         });
       }
       return;
     }
 
-    // ── Rondas 2+ individual ──
+    // ── Rondas individuales (ronda 1 tras aceptación + rondas 2, 3…) ──
+
+    // Detectar si firstOfferedSeat acaba de actuar (habilita canTouch)
+    const firstOfferedSeat    = activeTable.firstOfferedSeat || order[0];
+    const justActedFirstOffer = seatKey === firstOfferedSeat;
+    const newFirstOfferedActed = activeTable.firstOfferedActed || justActedFirstOffer;
+
     if (allActed) {
+      // Todos actuaron → nueva ronda, empieza desde round1StartSeat si es ronda 1
+      // o desde el inicio del orden en rondas posteriores
+      const nextRound   = (activeTable.round || 1) + 1;
+      const nextStarter = nextRound === 2
+        ? (activeTable.round1StartSeat || order[0])
+        : order[0];
+
       await updateDoc(tableRef, {
         seats, centerCards,
-        round:          (activeTable.round || 1) + 1,
-        currentTurn:    sorted[0],
-        actedThisRound: [],
+        round:             nextRound,
+        currentTurn:       nextStarter,
+        actedThisRound:    [],
+        firstOfferedActed: newFirstOfferedActed,
         ...extraUpdates,
       });
     } else {
-      const idx  = sorted.indexOf(seatKey);
+      const idx  = order.indexOf(seatKey);
       const next = sorted[idx + 1] || sorted[0];
       await updateDoc(tableRef, {
         seats, centerCards,
@@ -1236,12 +1248,13 @@ export const CasinoProvider = ({ children }) => {
       const [seatKey] = entry;
       if (activeTable.currentTurn !== seatKey) return;
 
-      const sorted      = Object.keys(activeTable.seats)
-        .filter(k => activeTable.seats[k]).sort((a, b) => +a - +b);
-      const toucherIdx  = sorted.indexOf(seatKey);
+      const playOrder   = activeTable.playOrder ||
+        Object.keys(activeTable.seats).filter(k => activeTable.seats[k]).sort((a,b) => +a - +b);
+      const order       = playOrder.filter(k => activeTable.seats[k]);
+      const toucherIdx  = order.indexOf(seatKey);
       const finalTurnRemaining = [
-        ...sorted.slice(toucherIdx + 1),
-        ...sorted.slice(0, toucherIdx),
+        ...order.slice(toucherIdx + 1),
+        ...order.slice(0, toucherIdx),
       ];
 
       if (finalTurnRemaining.length === 0) {
@@ -1290,7 +1303,8 @@ export const CasinoProvider = ({ children }) => {
         phase: "waiting", round: 0, round1Phase: null, currentTurn: null,
         actedThisRound: [], touchedBy: null, round1Swapped: false,
         finalTurnRemaining: [], centerCards: [], deck: [],
-        wildcardRank: null,   // se reasignará en el próximo deal
+        wildcardRank: null, playOrder: [], firstOfferedSeat: null,
+        round1StartSeat: null, firstOfferedActed: false, swapperSeat: null,
         seats,
       });
     } catch (err) {
