@@ -1077,12 +1077,16 @@ export const CasinoProvider = ({ children }) => {
     const newFirstOfferedActed = activeTable.firstOfferedActed || justActedFirstOffer;
 
     if (allActed) {
-      // Todos actuaron → nueva ronda, empieza desde round1StartSeat si es ronda 1
-      // o desde el inicio del orden en rondas posteriores
-      const nextRound   = (activeTable.round || 1) + 1;
+      const nextRound = (activeTable.round || 1) + 1;
+
+      // El siguiente en iniciar es el jugador DESPUÉS del último que actuó.
+      // Así nadie tiene dos turnos consecutivos por cambio de ronda.
+      // Excepción: ronda 2 siempre empieza desde round1StartSeat (por diseño del juego).
+      const idxLast    = order.indexOf(seatKey);
+      const afterLast  = order[(idxLast + 1) % order.length];
       const nextStarter = nextRound === 2
-        ? (activeTable.round1StartSeat || order[0])
-        : order[0];
+        ? (activeTable.round1StartSeat || afterLast)
+        : afterLast;
 
       await updateDoc(tableRef, {
         seats, centerCards,
@@ -1335,25 +1339,20 @@ export const CasinoProvider = ({ children }) => {
     // Calcular turno del bot con delay
     const timer = setTimeout(async () => {
       try {
-        const round       = activeTable.round || 1;
-        const wildRank    = activeTable.wildcardRank || getRoundWildcardRank(1);
+        const round    = activeTable.round || 1;
+        const wildRank = activeTable.wildcardRank || null;
         const seats       = { ...activeTable.seats };
         const centerCards = (activeTable.centerCards || []).map(c => ({ ...c }));
         const botCards    = [...(currentPlayer.cards || [])];
 
-        // ── Ronda 1: decide si cambia toda la mano ──
+        // ── Ronda 0: decide si cambia toda la mano ──
         if (activeTable.round1Phase === "choose_all") {
-          // Evalúa su mano actual
-          const myEval  = evaluateBestHand(botCards, round);
-          const cCards  = centerCards.map(cc => cc.card);
-          const cEval   = evaluateBestHand(cCards, round);
-
-          // Cambia si el centro es mejor o si su mano es peor que Trío
+          const myEval = evaluateBestHand(botCards, wildRank);
+          const cCards = centerCards.map(cc => cc.card);
+          const cEval  = evaluateBestHand(cCards, wildRank);
           if (cEval.rank < myEval.rank || myEval.rank >= 8) {
-            // viudaSwapAll internamente
             const newCenter = botCards.map(card => ({ card, revealed: true }));
-            const newBotCards = cCards;
-            seats[currentSeatKey] = { ...currentPlayer, cards: newBotCards };
+            seats[currentSeatKey] = { ...currentPlayer, cards: cCards };
             await _viudaNextTurn(seats, newCenter, currentSeatKey, { round1Swapped: true });
           } else {
             await _viudaNextTurn(seats, centerCards, currentSeatKey);
@@ -1361,74 +1360,68 @@ export const CasinoProvider = ({ children }) => {
           return;
         }
 
-        // ── Rondas 2+: intercambio individual o tocar ──
+        // ── Rondas individuales ──
+        let bestEval   = evaluateBestHand(botCards, wildRank);
+        let bestAction = null;
 
-        // Evaluar mano actual
-        let bestEval = evaluateBestHand(botCards, round);
-        let bestAction = null; // { type: "swap", myIdx, centerIdx } | { type: "swapAll" } | { type: "pass" }
+        // Solo cartas del centro ya reveladas
+        const revealedCenter = centerCards
+          .map((cc, ci) => ({ ...cc, ci }))
+          .filter(cc => cc.revealed);
 
-        // Probar intercambio de cada carta con cada carta del centro
         for (let mi = 0; mi < botCards.length; mi++) {
-          for (let ci = 0; ci < centerCards.length; ci++) {
-            if (!centerCards[ci].revealed && phase !== "final_round") continue;
-            const testCards = [...botCards];
-            testCards[mi] = centerCards[ci].card;
-            const testEval = evaluateBestHand(testCards, round);
+          for (const cc of revealedCenter) {
+            const test     = [...botCards]; test[mi] = cc.card;
+            const testEval = evaluateBestHand(test, wildRank);
             if (testEval.rank < bestEval.rank ||
                (testEval.rank === bestEval.rank &&
                 JSON.stringify(testEval.tiebreakers) > JSON.stringify(bestEval.tiebreakers))) {
               bestEval   = testEval;
-              bestAction = { type: "swap", myIdx: mi, centerIdx: ci };
+              bestAction = { type: "swap", myIdx: mi, centerIdx: cc.ci };
             }
           }
         }
 
-        // Probar cambiar toda la mano
-        const centerAllCards = centerCards.map(cc => cc.card);
-        const swapAllEval    = evaluateBestHand(centerAllCards, round);
-        if (swapAllEval.rank < bestEval.rank) {
-          bestEval   = swapAllEval;
-          bestAction = { type: "swapAll" };
+        if (revealedCenter.length > 0) {
+          const allCenter  = centerCards.map(cc => cc.card);
+          const swapAllEval = evaluateBestHand(allCenter, wildRank);
+          if (swapAllEval.rank < bestEval.rank) {
+            bestEval = swapAllEval;
+            bestAction = { type: "swapAll" };
+          }
         }
 
-        // Tocar si tiene buena mano (Full o mejor) y es ronda 3+
-        if (round >= 3 && bestEval.rank <= 5 && phase === "playing") {
-          const sorted      = Object.keys(seats).filter(k => seats[k]).sort((a,b) => +a - +b);
-          const toucherIdx  = sorted.indexOf(currentSeatKey);
-          const finalTurnRemaining = [
-            ...sorted.slice(toucherIdx + 1),
-            ...sorted.slice(0, toucherIdx),
-          ];
-          if (finalTurnRemaining.length === 0) {
-            await _viudaResolve(seats);
-          } else {
-            const { updateDoc: _u, doc: _d } = { updateDoc, doc };
+        // Tocar si mano buena (Full o mejor) y ronda 3+
+        if (round >= 3 && bestEval.rank <= 5 && phase === "playing"
+            && activeTable.firstOfferedActed) {
+          const po_  = activeTable.playOrder ||
+            Object.keys(seats).filter(k => seats[k]).sort((a,b) => +a - +b);
+          const ord_ = po_.filter(k => seats[k]);
+          const ti   = ord_.indexOf(currentSeatKey);
+          const fin  = [...ord_.slice(ti+1), ...ord_.slice(0,ti)];
+          if (!fin.length) { await _viudaResolve(seats); }
+          else {
             await updateDoc(doc(db, "tables", activeTable.id), {
-              phase:              "final_round",
-              touchedBy:          currentSeatKey,
-              currentTurn:        finalTurnRemaining[0],
-              finalTurnRemaining: finalTurnRemaining.slice(1),
-              actedThisRound:     [...(activeTable.actedThisRound || []), currentSeatKey],
+              phase: "final_round", touchedBy: currentSeatKey,
+              currentTurn: fin[0], finalTurnRemaining: fin.slice(1),
+              actedThisRound: [...(activeTable.actedThisRound||[]), currentSeatKey],
             });
           }
           return;
         }
 
-        // Ejecutar la mejor acción encontrada
         if (bestAction?.type === "swap") {
-          const myCard   = botCards[bestAction.myIdx];
+          const myCard = botCards[bestAction.myIdx];
           const newCards = [...botCards];
           newCards[bestAction.myIdx] = centerCards[bestAction.centerIdx].card;
           centerCards[bestAction.centerIdx] = { card: myCard, revealed: true };
           seats[currentSeatKey] = { ...currentPlayer, cards: newCards };
           await _viudaNextTurn(seats, centerCards, currentSeatKey);
         } else if (bestAction?.type === "swapAll") {
-          const newCenter    = botCards.map(card => ({ card, revealed: true }));
-          const newBotCards  = centerAllCards;
-          seats[currentSeatKey] = { ...currentPlayer, cards: newBotCards };
+          const newCenter  = botCards.map(card => ({ card, revealed: true }));
+          seats[currentSeatKey] = { ...currentPlayer, cards: centerCards.map(cc=>cc.card) };
           await _viudaNextTurn(seats, newCenter, currentSeatKey);
         } else {
-          // Pasar o no hacer nada
           await _viudaNextTurn(seats, centerCards, currentSeatKey);
         }
       } catch (err) {
