@@ -106,6 +106,10 @@ export const CasinoProvider = ({ children }) => {
   const [authChecked,   setAuthChecked]   = useState(false);
   const [error,         setError]         = useState(null);
 
+  // Ref siempre actualizada del ID de la mesa activa — accesible sin stale closure
+  const activeTableIdRef = useRef(null);
+  const userRef          = useRef(null);
+
   // Ref que guarda la apuesta confirmada por el jugador en el modal.
   // Al usar useRef en lugar de useState evitamos problemas de stale closure
   // en dealCards (que puede estar capturado en un closure antiguo).
@@ -903,85 +907,75 @@ export const CasinoProvider = ({ children }) => {
   // Reparte 5 cartas a cada jugador y 5 al centro boca abajo.
   // =====================================================
 
+
+  // Lógica real del reparto — separada para poder llamarla con datos frescos
+  const _dealViudaCardsCore = async (tableRef, freshData) => {
+    const deck    = createViudaDeck();
+    let   seats   = { ...freshData.seats };
+    const allKeys = Object.keys(seats).sort((a, b) => +a - +b);
+
+    // ── Bot si solo hay 1 jugador ──
+    const humanSeats = allKeys.filter(k => seats[k] !== null);
+    if (humanSeats.length === 1) {
+      const emptySlot = allKeys.find(k => seats[k] === null);
+      if (emptySlot) {
+        seats[emptySlot] = {
+          uid: "bot_" + emptySlot, username: "🤖 Bot", isBot: true, ready: true,
+          cards: [], bet: freshData.minBet || 100,
+          result: null, payout: 0, betDeducted: false, balancePaid: false,
+        };
+      }
+    }
+
+    allKeys.forEach(key => {
+      if (!seats[key]) return;
+      const bet = (pendingBetRef.current !== null && seats[key].uid === userRef.current?.uid)
+        ? pendingBetRef.current
+        : seats[key].bet || freshData.minBet || 100;
+      seats[key] = {
+        ...seats[key],
+        cards: [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()],
+        bet, result: null, payout: 0, betDeducted: false, balancePaid: false,
+      };
+    });
+
+    const centerCards = Array.from({ length: 5 }, () => ({
+      card: deck.pop(), revealed: false,
+    }));
+
+    // Orden aleatorio
+    const seatedKeys = allKeys.filter(k => seats[k] !== null);
+    const playOrder  = [...seatedKeys].sort(() => Math.random() - 0.5);
+    const firstOfferedSeat = playOrder[0];
+    const round1StartSeat  = playOrder[1] || playOrder[0];
+
+    const handNumber   = (freshData.handNumber || 0) + 1;
+    const RANKS_POOL   = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+    const wildcardRank = RANKS_POOL[Math.floor(Math.random() * RANKS_POOL.length)];
+
+    pendingBetRef.current = null;
+
+    await updateDoc(tableRef, {
+      phase: "playing", round: 1, handNumber, wildcardRank,
+      round1Phase: "choose_all", playOrder,
+      firstOfferedSeat, round1StartSeat, firstOfferedActed: false,
+      currentTurn: firstOfferedSeat,
+      actedThisRound: [], touchedBy: null, finalTurnRemaining: [],
+      round1Swapped: false, swapperSeat: null,
+      centerCards, deck, seats,
+    });
+  };
+
   const dealViudaCards = async () => {
     try {
-      if (!activeTable) return;
-      const tableRef  = doc(db, "tables", activeTable.id);
+      const tid = activeTableIdRef.current;
+      if (!tid) return;
+      const tableRef  = doc(db, "tables", tid);
       const freshSnap = await getDoc(tableRef);
       if (!freshSnap.exists()) return;
       const freshData = freshSnap.data();
-
-      // Mazo con jokers
-      const deck  = createViudaDeck();
-      let seats   = { ...freshData.seats };
-      const allKeys = Object.keys(seats).sort((a, b) => +a - +b);
-
-      // ── Si solo hay 1 jugador, agregar bot ──
-      const humanSeats = allKeys.filter(k => seats[k] !== null);
-      if (humanSeats.length === 1) {
-        // Buscar primer slot vacío
-        const emptySlot = allKeys.find(k => seats[k] === null);
-        if (emptySlot) {
-          seats[emptySlot] = {
-            uid:         'bot_' + emptySlot,
-            username:    '🤖 Bot',
-            isBot:       true,
-            ready:       true,
-            cards:       [],
-            bet:         freshData.minBet || 100,
-            result:      null,
-            payout:      0,
-            betDeducted: false,
-            balancePaid: false,
-          };
-        }
-      }
-
-      allKeys.forEach(key => {
-        if (!seats[key]) return;
-        const bet = (pendingBetRef.current !== null && seats[key].uid === user?.uid)
-          ? pendingBetRef.current
-          : seats[key].bet || freshData.minBet || activeTable.minBet;
-        seats[key] = {
-          ...seats[key],
-          cards:       [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()],
-          bet,
-          result:      null,
-          payout:      0,
-          betDeducted: false,
-          balancePaid: false,
-        };
-      });
-
-      // 5 cartas en el centro, todas boca abajo
-      const centerCards = Array.from({ length: 5 }, () => ({
-        card: deck.pop(), revealed: false,
-      }));
-
-      const firstSeat = sorted.find(k => seats[k] !== null) || null;
-      pendingBetRef.current = null;
-
-      // handNumber: contador de manos jugadas en esta mesa
-      const handNumber = (freshData.handNumber || 0) + 1;
-      // Comodín de la partida: aleatorio entre A,2..K (excluyendo jokers)
-      const RANKS_POOL  = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-      const wildcardRank = RANKS_POOL[Math.floor(Math.random() * RANKS_POOL.length)];
-
-      await updateDoc(tableRef, {
-        phase:              "playing",
-        round:              1,
-        handNumber,
-        wildcardRank,        // guardado en Firestore para que todos lo vean igual
-        round1Phase:        "choose_all",
-        currentTurn:        firstSeat,
-        actedThisRound:     [],
-        touchedBy:          null,
-        finalTurnRemaining: [],
-        round1Swapped:      false,
-        centerCards,
-        deck,
-        seats,
-      });
+      if (freshData.phase !== "countdown") return;
+      await _dealViudaCardsCore(tableRef, freshData);
     } catch (err) {
       console.error("dealViudaCards:", err);
       setError(err.message);
@@ -1100,7 +1094,7 @@ export const CasinoProvider = ({ children }) => {
       });
     } else {
       const idx  = order.indexOf(seatKey);
-      const next = sorted[idx + 1] || sorted[0];
+      const next = order[idx + 1] || order[0];
       await updateDoc(tableRef, {
         seats, centerCards,
         currentTurn:    next,
@@ -1112,11 +1106,11 @@ export const CasinoProvider = ({ children }) => {
 
   const _viudaResolve = async (seats) => {
     const tableRef   = doc(db, "tables", activeTable.id);
-    const round      = activeTable?.handNumber || 1;
+    const wildcardRank = activeTable?.wildcardRank || null;
     const players    = Object.entries(seats)
       .filter(([_, p]) => p !== null)
       .map(([key, p]) => ({ seatKey: key, cards: p.cards }));
-    const winnerKeys = determineViudaWinners(players, round);
+    const winnerKeys = determineViudaWinners(players, wildcardRank);
     const totalPot   = players.reduce((sum, p) => sum + (seats[p.seatKey].bet || 0), 0);
     const payout     = winnerKeys.length ? Math.floor(totalPot / winnerKeys.length) : 0;
 
@@ -1332,6 +1326,12 @@ export const CasinoProvider = ({ children }) => {
     const currentPlayer = activeTable.seats?.[currentSeatKey];
     if (!currentPlayer?.isBot) return;
 
+    // Guard: esperar datos completos — si el bot no tiene cartas aún,
+    // el snapshot llegó antes de que dealViudaCards terminara de escribir
+    if (!currentPlayer.cards || currentPlayer.cards.length === 0) return;
+    if (!activeTable.centerCards || activeTable.centerCards.length === 0) return;
+    if (!activeTable.playOrder || activeTable.playOrder.length === 0) return;
+
     // Calcular turno del bot con delay
     const timer = setTimeout(async () => {
       try {
@@ -1439,6 +1439,41 @@ export const CasinoProvider = ({ children }) => {
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTable?.currentTurn, activeTable?.phase]);
+
+
+  // =====================================================
+  // VIUDA COUNTDOWN AUTO-TRIGGER
+  // =====================================================
+
+  useEffect(() => {
+    if (!activeTable) return;
+    if (activeTable.game !== "viuda") return;
+    if (activeTable.phase !== "countdown") return;
+    if (!activeTable.countdownStartedAt) return;
+
+    const startedAt = activeTable.countdownStartedAt;
+    const tableId   = activeTable.id;
+    const uid       = user?.uid;
+    const elapsed   = (Date.now() - startedAt) / 1000;
+    const remaining = Math.max(0, 5 - elapsed);
+
+    const doFire = async () => {
+      try {
+        if (!tableId || !uid) return;
+        const ref       = doc(db, "tables", tableId);
+        const snap      = await getDoc(ref);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (data.phase !== "countdown") return;
+        await _dealViudaCardsCore(ref, data);
+      } catch (e) { console.error("viuda countdown fire:", e); }
+    };
+
+    if (remaining <= 0) { doFire(); return; }
+    const t = setTimeout(doFire, remaining * 1000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTable?.id, activeTable?.countdownStartedAt]);
 
   // =====================================================
   // BALANCE — La Viuda (descontar apuesta / pagar bote)

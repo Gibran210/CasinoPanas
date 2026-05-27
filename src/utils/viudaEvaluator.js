@@ -2,13 +2,12 @@
  * viudaEvaluator.js — La Viuda con comodines
  *
  * Comodines:
- *  • Jokers  : "JK1" y "JK2" — siempre comodines
- *  • De ronda: la carta que corresponda a esa ronda
- *             (ronda 1 = A, 2 = 2, … 13 = K, ronda 14 vuelve a A)
+ *  • Jokers     : "JK1" y "JK2" — siempre comodines
+ *  • De partida : wildcardRank almacenado en Firestore (ej. "A")
  *
  * Ranking (1 = mejor):
- *  1  Flor Imperial      A,K,Q,J,10 mismo palo
- *  2  Repoker            5 del mismo valor (requiere al menos 1 comodín)
+ *  1  Flor Imperial
+ *  2  Repoker
  *  3  Escalera de Color
  *  4  Poker
  *  5  Full
@@ -21,7 +20,8 @@
  */
 
 export const RANK_ORDER = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-const RANK_VALS  = Object.fromEntries(RANK_ORDER.map((r, i) => [r, i + 2]));
+
+const RANK_VALS = Object.fromEntries(RANK_ORDER.map((r, i) => [r, i + 2]));
 RANK_VALS['A'] = 14;
 
 const RANK_NAMES = {
@@ -31,20 +31,25 @@ const RANK_NAMES = {
 
 export const rankName = (val) => RANK_NAMES[val] || String(val);
 
-/* ── Comodines ───────────────────────────────────────── */
+/* ── Comodines ─────────────────────────────────────── */
 
-/** Rango comodín de esa ronda (ronda 1 → A, 2 → 2, … 13 → K, cíclico) */
-export const getRoundWildcardRank = (round) =>
-  RANK_ORDER[(round - 1) % 13];
+export const getRoundWildcardRank = (handNumber) =>
+  RANK_ORDER[(handNumber - 1) % 13];
 
-/** ¿Es comodín esta carta en esta ronda? */
-export const isWildcard = (card, roundWildcardRank) => {
+/**
+ * ¿Es comodín esta carta?
+ * @param {string} card            — "A♠", "JK1", etc.
+ * @param {string} wildcardRank    — rango comodín de la partida, ej. "A"
+ */
+export const isWildcard = (card, wildcardRank) => {
   if (!card) return false;
   if (card === 'JK1' || card === 'JK2') return true;
-  return card.slice(0, -1) === roundWildcardRank;
+  if (!wildcardRank) return false;
+  const rank = card.slice(0, -1);   // "A♠" → "A"
+  return rank === wildcardRank;
 };
 
-/* ── Utilidades de evaluación ─────────────────────────── */
+/* ── Helpers internos ──────────────────────────────── */
 
 export const parseCard = (card) => {
   if (card === 'JK1' || card === 'JK2') return { rank: 'JK', suit: '★', val: 0 };
@@ -65,15 +70,14 @@ const detectStraight = (vals) => {
   const u = [...new Set(vals)].sort((a, b) => a - b);
   if (u.length !== 5) return { is: false, high: 0 };
   if (u[4] - u[0] === 4) return { is: true, high: u[4] };
-  // A como 1: A-2-3-4-5
-  if (u[0] === 2 && u[1] === 3 && u[2] === 4 && u[3] === 5 && u[4] === 14)
+  if (u[0]===2 && u[1]===3 && u[2]===4 && u[3]===5 && u[4]===14)
     return { is: true, high: 5 };
   return { is: false, high: 0 };
 };
 
-/* ── Evaluación SIN comodines ─────────────────────────── */
+/* ── Evaluación SIN comodines (cartas ya sustituidas) ─ */
 
-export const evaluateViudaHand = (cards) => {
+const evaluateRealHand = (cards) => {
   if (!cards || cards.length < 5)
     return { rank: 12, name: 'Sin mano', display: '—', tiebreakers: [0] };
 
@@ -84,7 +88,7 @@ export const evaluateViudaHand = (cards) => {
   const straight = detectStraight(vals);
   const counts   = countRanks(parsed);
 
-  if (isFlush && straight.is && straight.high === 14 && vals[vals.length - 1] === 10)
+  if (isFlush && straight.is && straight.high === 14 && vals[vals.length-1] === 10)
     return { rank: 1, name: 'Flor Imperial', display: '♚ Flor Imperial', tiebreakers: [0] };
 
   if (isFlush && straight.is)
@@ -130,9 +134,11 @@ export const evaluateViudaHand = (cards) => {
     display: `Carta Mayor: ${rankName(vals[0])}`, tiebreakers: vals };
 };
 
-/* ── Evaluación CON comodines (fuerza bruta O(52^n)) ─── */
+// Alias público (usado donde no hay comodines)
+export const evaluateViudaHand = evaluateRealHand;
 
-const ALL_CARDS = ['♠','♥','♦','♣'].flatMap(s =>
+/* ── Todas las cartas reales posibles para sustitución ─ */
+const ALL_REAL_CARDS = ['♠','♥','♦','♣'].flatMap(s =>
   RANK_ORDER.map(r => r + s)
 );
 
@@ -146,95 +152,121 @@ const compareTiebreakers = (a, b) => {
 };
 
 const isBetter = (a, b) =>
-  a.rank < b.rank || (a.rank === b.rank && compareTiebreakers(a.tiebreakers, b.tiebreakers) > 0);
+  a.rank < b.rank ||
+  (a.rank === b.rank && compareTiebreakers(a.tiebreakers, b.tiebreakers) > 0);
 
 /**
- * Evalúa la mejor mano posible teniendo en cuenta comodines.
- * Fuerza bruta: sustituye cada comodín por cada carta posible y se queda
- * con la evaluación más favorable.
+ * Evalúa la MEJOR mano posible con comodines.
  *
- * @param {string[]} cards       — 5 cartas (pueden incluir JK1/JK2 y comodín de ronda)
- * @param {number}   round       — ronda actual (determina el comodín de ronda)
+ * @param {string[]} cards        — 5 cartas de la mano
+ * @param {string}   wildcardRank — rango comodín de esta partida (ej. "A")
+ *                                  Si es número de ronda, se convierte internamente.
  */
-export const evaluateBestHand = (cards, round) => {
-  const wRank    = getRoundWildcardRank(round);
-  const wilds    = cards.filter(c => isWildcard(c, wRank));
+export const evaluateBestHand = (cards, wildcardRankOrRound) => {
+  // Aceptar tanto wildcardRank string ("A") como handNumber numérico
+  const wRank = typeof wildcardRankOrRound === 'number'
+    ? getRoundWildcardRank(wildcardRankOrRound)
+    : (wildcardRankOrRound || null);
+
+  // Separar comodines de cartas reales
+  const wilds     = cards.filter(c => isWildcard(c, wRank));
   const realCards = cards.filter(c => !isWildcard(c, wRank));
-  const wCount   = wilds.length;
+  const wCount    = wilds.length;
 
-  if (wCount === 0) return evaluateViudaHand(cards);
+  // Sin comodines → evaluar directamente
+  if (wCount === 0) return evaluateRealHand(cards);
 
-  // Repoker: con todos comodines o si tenemos 4 iguales + comodín
-  if (wCount >= 5) return { rank: 2, name: 'Repoker',
-    display: '★ Repoker (5 comodines)', tiebreakers: [14] };
+  // 5 comodines
+  if (wCount >= 5) return {
+    rank: 2, name: 'Repoker',
+    display: '★ Repoker (5 comodines)', tiebreakers: [14],
+  };
 
   let best = { rank: 12, name: 'Sin mano', display: '—', tiebreakers: [0] };
 
+  const tryHand = (hand) => {
+    if (hand.length !== 5) return;
+    // Comprobar Repoker (5 del mismo valor)
+    const parsed = hand.map(parseCard);
+    const counts = countRanks(parsed);
+    if (counts[0]?.cnt === 5) {
+      const rep = {
+        rank: 2, name: 'Repoker',
+        display: `★ Repoker de ${rankName(counts[0].val)}s`,
+        tiebreakers: [counts[0].val],
+      };
+      if (isBetter(rep, best)) best = rep;
+      return;
+    }
+    const ev = evaluateRealHand(hand);
+    if (isBetter(ev, best)) best = ev;
+  };
+
   if (wCount === 1) {
-    for (const sub of ALL_CARDS) {
-      const hand = [...realCards, sub];
-      if (hand.length !== 5) continue;
-      const ev = evaluateViudaHand(hand);
-      // Checar Repoker (5 del mismo valor con comodín)
-      const parsed = hand.map(parseCard);
-      const counts = countRanks(parsed);
-      if (counts[0]?.cnt === 5) {
-        const rep = { rank: 2, name: 'Repoker',
-          display: `Repoker de ${rankName(counts[0].val)}s`, tiebreakers: [counts[0].val] };
-        if (isBetter(rep, best)) best = rep;
-      } else if (isBetter(ev, best)) best = ev;
+    for (const sub of ALL_REAL_CARDS) {
+      tryHand([...realCards, sub]);
     }
   } else if (wCount === 2) {
-    for (let i = 0; i < ALL_CARDS.length; i++) {
-      for (let j = 0; j < ALL_CARDS.length; j++) {
-        if (i === j) continue;
-        const hand = [...realCards, ALL_CARDS[i], ALL_CARDS[j]];
-        if (hand.length !== 5) continue;
-        const ev = evaluateViudaHand(hand);
-        const parsed = hand.map(parseCard);
-        const counts = countRanks(parsed);
-        if (counts[0]?.cnt === 5) {
-          const rep = { rank: 2, name: 'Repoker',
-            display: `Repoker de ${rankName(counts[0].val)}s`, tiebreakers: [counts[0].val] };
-          if (isBetter(rep, best)) best = rep;
-        } else if (isBetter(ev, best)) best = ev;
+    for (let i = 0; i < ALL_REAL_CARDS.length; i++) {
+      for (let j = i; j < ALL_REAL_CARDS.length; j++) {
+        tryHand([...realCards, ALL_REAL_CARDS[i], ALL_REAL_CARDS[j]]);
       }
     }
   } else {
-    // 3+ comodines: simplificación — buscar repoker o flor imperial
-    const highVal = realCards.length
-      ? Math.max(...realCards.map(c => parseCard(c).val))
-      : 14;
-    // Con 3+ wildcards casi siempre se puede hacer poker o mejor
-    best = { rank: 4, name: 'Poker',
-      display: `Poker con comodines`, tiebreakers: [14] };
+    // 3+ comodines — triple loop O(52^3) ≈ 140k iteraciones, manejable
+    if (wCount === 3) {
+      for (let i = 0; i < ALL_REAL_CARDS.length; i++) {
+        for (let j = i; j < ALL_REAL_CARDS.length; j++) {
+          for (let k = j; k < ALL_REAL_CARDS.length; k++) {
+            tryHand([...realCards, ALL_REAL_CARDS[i], ALL_REAL_CARDS[j], ALL_REAL_CARDS[k]]);
+          }
+        }
+      }
+    } else if (wCount === 4) {
+      // 4 comodines + 1 real → probar cuádruple con la carta real
+      const realVal = parseCard(realCards[0]).val;
+      for (const s of ALL_REAL_CARDS) {
+        tryHand([realCards[0], s, s.replace(/.$/, '♠'), s.replace(/.$/, '♥'), s.replace(/.$/, '♦')]);
+      }
+      // Simplificación: Repoker garantizado con 4 comodines
+      if (best.rank > 2) best = {
+        rank: 2, name: 'Repoker',
+        display: `★ Repoker con 4 comodines`, tiebreakers: [14],
+      };
+    }
+    // Fallback solo si nada funcionó
+    if (best.rank === 12) {
+      const parsed = realCards.map(parseCard);
+      const counts = countRanks(parsed);
+      const topVal = counts[0]?.val || 14;
+      best = { rank: 4, name: 'Poker', display: `★ Poker de ${rankName(topVal)}s`, tiebreakers: [topVal] };
+    }
   }
 
   return best;
 };
 
-/* ── Comparar manos ───────────────────────────────────── */
+/* ── Comparar dos manos ────────────────────────────── */
 
-export const compareViudaHands = (cardsA, cardsB, round) => {
-  const a = evaluateBestHand(cardsA, round);
-  const b = evaluateBestHand(cardsB, round);
+export const compareViudaHands = (cardsA, cardsB, wildcardRank) => {
+  const a = evaluateBestHand(cardsA, wildcardRank);
+  const b = evaluateBestHand(cardsB, wildcardRank);
   if (a.rank !== b.rank) return a.rank < b.rank ? 1 : -1;
   const c = compareTiebreakers(a.tiebreakers, b.tiebreakers);
   return c > 0 ? 1 : c < 0 ? -1 : 0;
 };
 
 /**
- * Determina ganadores entre varios jugadores.
+ * Determina los ganadores entre varios jugadores.
  * @param {{ seatKey, cards }[]} players
- * @param {number} round
- * @returns {string[]} seatKeys ganadores
+ * @param {string}               wildcardRank — rango comodín de la partida
  */
-export const determineViudaWinners = (players, round = 1) => {
+export const determineViudaWinners = (players, wildcardRank) => {
   if (!players.length) return [];
   let best = [players[0]];
   for (let i = 1; i < players.length; i++) {
-    const cmp = compareViudaHands(players[i].cards, best[0].cards, round);
-    if (cmp > 0)       best = [players[i]];
+    const cmp = compareViudaHands(players[i].cards, best[0].cards, wildcardRank);
+    if (cmp > 0)        best = [players[i]];
     else if (cmp === 0) best.push(players[i]);
   }
   return best.map(p => p.seatKey);

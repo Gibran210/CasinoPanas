@@ -104,26 +104,22 @@ function VCard({ card, faceDown = false, small = false, selected = false, onClic
 }
 
 /* ── Countdown modal reutilizable ─────────────────── */
-function ViudaCountdown({ table, user, onDeal }) {
-  const [secs, setSecs]  = useState(5);
-  const firedRef         = useRef(false);
+// ViudaCountdown: solo visual — el disparo de dealViudaCards
+// ocurre en CasinoContext (sin stale closures)
+function ViudaCountdown({ table }) {
+  const [secs, setSecs] = useState(5);
 
   useEffect(() => {
     if (!table?.countdownStartedAt) return;
+    const startedAt = table.countdownStartedAt;
     const iv = setInterval(() => {
-      const elapsed   = (Date.now() - table.countdownStartedAt) / 1000;
+      const elapsed   = (Date.now() - startedAt) / 1000;
       const remaining = Math.max(0, 5 - elapsed);
       setSecs(Math.ceil(remaining));
-      if (remaining <= 0 && !firedRef.current) {
-        firedRef.current = true;
-        clearInterval(iv);
-        const seats   = Object.values(table.seats || {}).filter(Boolean);
-        const isFirst = table.createdBy === user?.uid || seats[0]?.uid === user?.uid;
-        if (isFirst) onDeal();
-      }
+      if (remaining <= 0) clearInterval(iv);
     }, 100);
     return () => clearInterval(iv);
-  }, [table?.countdownStartedAt]);  // eslint-disable-line
+  }, [table?.countdownStartedAt]);
 
   const progress = (secs / 5) * 100;
   const seated   = Object.values(table?.seats || {}).filter(Boolean);
@@ -347,7 +343,7 @@ export default function ViudaTable() {
   const firstOfferedActed = activeTable?.firstOfferedActed || false;
   const canTouch = firstOfferedActed && isMyTurn && phase === "playing";
   const canPass       = phase === "final_round" && isMyTurn; // SOLO tras un toque
-  const inGame        = ["playing","final_round","results"].includes(phase);
+  const inGame        = ["playing","final_round","results","dealing"].includes(phase);
 
   const phaseLabels = {
     waiting:     "Sala de espera",
@@ -390,10 +386,9 @@ export default function ViudaTable() {
   /* ── Mano evaluada del jugador actual ── */
   // wildcardRank viene de Firestore (guardado por dealViudaCards)
   // Así todos los jugadores ven EXACTAMENTE el mismo comodín
-  const wildRank   = activeTable?.wildcardRank || (inGame ? getRoundWildcardRank(1) : null);
-  const handNumber  = activeTable?.handNumber || 1;
+  const wildRank   = activeTable?.wildcardRank || null;
   const myHandEval  = myPlayer?.cards?.length === 5
-    ? evaluateBestHand(myPlayer.cards, handNumber)
+    ? evaluateBestHand(myPlayer.cards, wildRank)
     : null;
 
   /* ── Render ── */
@@ -410,7 +405,7 @@ export default function ViudaTable() {
 
       {/* Modales */}
       {phase === "countdown" && (
-        <ViudaCountdown table={activeTable} user={user} onDeal={dealViudaCards} />
+        <ViudaCountdown table={activeTable} />
       )}
       {phase === "waiting" && allReady && seatedPlayers.length > 0 && mySeatKey && (
         <ReadyToast count={seatedPlayers.length} onStart={startCountdown} />
@@ -581,7 +576,7 @@ export default function ViudaTable() {
                               {player.result==="win"?"🏆 Ganador":"💸 Perdiste"}
                             </span>
                             <span style={{ fontSize:10, color:"rgba(255,255,255,0.35)" }}>
-                              {evaluateBestHand(player.cards, handNumber).name}
+                              {evaluateBestHand(player.cards, wildRank).name}
                             </span>
                           </div>
                         )}
@@ -741,7 +736,7 @@ export default function ViudaTable() {
                         :"💸 Perdiste"}
                     </span>
                     <p style={{ margin:"4px 0 0", fontSize:11, color:"rgba(255,255,255,0.4)" }}>
-                      Tu mano: {evaluateBestHand(myPlayer.cards, handNumber).display}
+                      Tu mano: {evaluateBestHand(myPlayer.cards, wildRank).display}
                     </p>
                   </div>
                 )}
@@ -963,7 +958,7 @@ export default function ViudaTable() {
                             }
                           </p>
                           <p style={{ margin:0, fontSize:11, color:"rgba(255,255,255,0.35)" }}>
-                            {evaluateBestHand(p.cards, handNumber).display}
+                            {evaluateBestHand(p.cards, wildRank).display}
                           </p>
                         </div>
                       </div>
