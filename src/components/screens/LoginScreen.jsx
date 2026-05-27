@@ -246,7 +246,7 @@ export default function LoginScreen() {
         <h2 className="gold-text" style={{ fontFamily: "Georgia, serif",
           fontSize: 42, fontWeight: 900, letterSpacing: "0.12em",
           textAlign: "center", margin: "0 0 8px" }}>
-          ROYAL
+          PANAS
         </h2>
         <p style={{ color: "#4ade80", fontFamily: "Georgia, serif",
           fontSize: 18, letterSpacing: "0.4em", textTransform: "uppercase",
@@ -280,7 +280,7 @@ export default function LoginScreen() {
             <div style={{ fontSize: 48, marginBottom: 8 }}>🃏</div>
             <h1 className="gold-text" style={{ fontFamily: "Georgia, serif",
               fontSize: 36, fontWeight: 900, letterSpacing: "0.12em", margin: "0 0 4px" }}>
-              ROYAL
+              PANAS
             </h1>
             <p style={{ color: "#4ade80", fontFamily: "Georgia, serif",
               fontSize: 14, letterSpacing: "0.4em", textTransform: "uppercase", margin: 0 }}>

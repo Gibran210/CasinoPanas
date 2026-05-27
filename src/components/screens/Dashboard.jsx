@@ -72,7 +72,7 @@ export default function Dashboard() {
           <span style={{ fontSize: 22 }}>🃏</span>
           <span className="gold-text" style={{ fontFamily: "Georgia, serif",
             fontSize: 20, fontWeight: 900, letterSpacing: "0.08em" }}>
-            ROYAL CASINO
+            PANAS CASINO
           </span>
         </div>
 
