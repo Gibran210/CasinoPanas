@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════
+   ROYAL CASINO — Design Tokens
+═══════════════════════════════════════════════ */
+:root {
+  --gold:          #d4af37;
+  --gold-light:    #f0d060;
+  --gold-dim:      rgba(212,175,55,0.15);
+  --gold-border:   rgba(212,175,55,0.25);
+  --felt:          #1a4a2e;
+  --felt-dark:     #0e2d1a;
+  --felt-light:    #245c38;
+  --surface-1:     #0d0d0d;
+  --surface-2:     #141414;
+  --surface-3:     #1c1c1c;
+  --surface-4:     #242424;
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-dim:    rgba(255,255,255,0.10);
+  --text-primary:  #f0f0f0;
+  --text-secondary:#9ca3af;
+  --text-dim:      #4b5563;
+  --red-card:      #dc2626;
+  --radius-sm:     10px;
+  --radius-md:     16px;
+  --radius-lg:     24px;
+  --radius-xl:     32px;
+}
+
+/* ── Reset ─────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ─────────────────────────────── */
+::-webkit-scrollbar            { width: 5px; height: 5px; }
+::-webkit-scrollbar-track      { background: transparent; }
+::-webkit-scrollbar-thumb      { background: rgba(212,175,55,0.3); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover{ background: rgba(212,175,55,0.6); }
+
+/* ── Form resets ───────────────────────────── */
+input, select, textarea {
+  color: white;
+  outline: none;
+}
+input::placeholder { color: var(--text-dim); }
+select option       { background: #1c1c1c; color: white; }
+
+/* ── Utility classes ───────────────────────── */
+.gold-text {
+  background: linear-gradient(135deg, #d4af37 0%, #f0d060 50%, #d4af37 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.felt-surface {
+  background: radial-gradient(ellipse at 50% 30%,
+    var(--felt-light) 0%,
+    var(--felt)       45%,
+    var(--felt-dark)  100%
+  );
+}
+
+.glass {
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.gold-ring {
+  box-shadow: 0 0 0 2px rgba(212,175,55,0.5),
+              0 0 20px rgba(212,175,55,0.15);
+}
+
+/* ── Animaciones ───────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes dealCard {
+  from { opacity: 0; transform: translateY(-24px) rotate(-6deg) scale(0.85); }
+  to   { opacity: 1; transform: translateY(0)     rotate(0deg)  scale(1); }
+}
+
+@keyframes pulseGold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212,175,55,0); }
+  50%       { box-shadow: 0 0 0 6px rgba(212,175,55,0.2); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes seatIn {
+  from { opacity: 0; transform: scale(0.88) translateY(10px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+.anim-fade-up    { animation: fadeUp   0.4s ease-out both; }
+.anim-fade-in    { animation: fadeIn   0.3s ease-out both; }
+.anim-deal       { animation: dealCard 0.35s ease-out both; }
+.anim-seat-in    { animation: seatIn   0.3s ease-out both; }
+.anim-pulse-gold { animation: pulseGold 2.4s ease-in-out infinite; }
+
+/* ── Stagger delays (para listas) ─────────── */
+.delay-1 { animation-delay: 0.05s; }
+.delay-2 { animation-delay: 0.10s; }
+.delay-3 { animation-delay: 0.15s; }
+.delay-4 { animation-delay: 0.20s; }
+.delay-5 { animation-delay: 0.25s; }
